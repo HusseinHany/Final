@@ -1,5 +1,9 @@
 # Final
 
+<p align="center">
+  <a href="https://github.com/HusseinHany/EDUFLOW"><img src="docs/banner.svg" width="100%" alt="EDUFLOW: a learning path lights up through a graph of courses, from Intro to Deep Learning."></a>
+</p>
+
 Single-file version of **EduFlow**, a personalized learning path generator in C++.
 
 The maintained, modular version (separate headers and sources, Makefile and CMake) is in [EDUFLOW](https://github.com/HusseinHany/EDUFLOW).
