@@ -4,16 +4,16 @@ Single-file version of **EduFlow**, a personalized learning path generator in C+
 
 The maintained, modular version (separate headers and sources, Makefile and CMake) is in [EDUFLOW](https://github.com/HusseinHany/EDUFLOW).
 
-## Known issues
+## Fixes
 
-This is the older version and is kept as it was. It still has problems that are fixed in EDUFLOW: typing a letter where a number is expected freezes the menus, saved courses fail to load back, and a course with more weekly hours than the timetable holds can freeze the scheduler.
+The same fixes as in EDUFLOW are applied here: typing a letter where a number is expected no longer freezes the menus, closed input exits cleanly, saved courses load back correctly, the scheduler can't loop forever, and scores, stress levels, skill levels, hours and durations are checked.
 
 ## Files
 
 | File | What it is |
 | --- | --- |
 | `Final` | The whole program in one C++ source file |
-| `EduFlow(1).cpp` | A slightly different revision of the same file |
+| `EduFlow(1).cpp` | The later revision: lists the saved students before loading one, saves after every change, and reloads students at startup |
 
 ## What's inside
 

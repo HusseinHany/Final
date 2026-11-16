@@ -12,6 +12,7 @@
 #include <ctime>
 #include <cmath>
 #include <stdexcept>
+#include <cstdlib>
 
 using namespace std;
 
@@ -97,6 +98,45 @@ string trim(const string& str) {
     return str.substr(first, (last - first + 1));
 }
 
+// Splits a saved line on '|' and keeps empty fields, so a course with no
+// prerequisites does not shift every later field.
+vector<string> splitFields(const string& line) {
+    vector<string> fields;
+    string field;
+    for (char ch : line) {
+        if (ch == '|') { fields.push_back(field); field.clear(); }
+        else field += ch;
+    }
+    fields.push_back(field);
+    return fields;
+}
+
+// Reads one line and parses it as a number. A letter or an empty line gives
+// `fallback`, so a menu sees an invalid choice instead of looping forever;
+// closed input (Ctrl+D or the end of a piped file) exits cleanly.
+string readLineOrExit() {
+    string line;
+    if (!getline(cin, line)) {
+        cout << "\nInput closed. Exiting.\n";
+        exit(0);
+    }
+    return line;
+}
+
+int readInt(int fallback = -1) {
+    try { return stoi(trim(readLineOrExit())); }
+    catch (...) { return fallback; }
+}
+
+double readDouble(double fallback = -1.0) {
+    try { return stod(trim(readLineOrExit())); }
+    catch (...) { return fallback; }
+}
+
+int clampInt(int value, int lo, int hi) {
+    return value < lo ? lo : (value > hi ? hi : value);
+}
+
 // ============ COURSE CLASS ============
 class Course {
 public:
@@ -159,8 +199,8 @@ public:
     }
 
     static Course* deserialize(const string& line) {
-        vector<string> parts = split(line, '|');
-        if (parts.size() < 13) return nullptr;
+        vector<string> parts = splitFields(line);
+        if (parts.size() < 14) return nullptr;
 
         Course* c = new Course();
         c->id = stoi(parts[0]);
@@ -1000,25 +1040,28 @@ public:
 // ============ SCHEDULE GENERATOR CLASS ============
 class ScheduleGenerator {
 public:
-    static WeeklySchedule generateSchedule(vector<Course*>& courses, Student& student) {
+    // Places each course in 2-hour blocks, Monday to Friday, starting with the
+    // evening. Every (day, start hour) pair is tried once, so the loop always
+    // ends: when the week is full, the remaining hours stay unscheduled.
+    static WeeklySchedule generateSchedule(vector<Course*>& courses, Student& /*student*/) {
         WeeklySchedule schedule;
 
-        int hoursPerDay = max(1, student.availableHours / 5);
-        vector<ScheduleDay> weekdays = {
+        const vector<ScheduleDay> weekdays = {
             ScheduleDay::MONDAY, ScheduleDay::TUESDAY, ScheduleDay::WEDNESDAY,
             ScheduleDay::THURSDAY, ScheduleDay::FRIDAY
         };
+        const vector<int> startHours = { 18, 20, 16, 14, 8, 10 };
 
-        int dayIndex = 0;
-        int startHour = 18;
+        size_t dayIndex = 0;
+        size_t hourIndex = 0;
 
         for (Course* course : courses) {
-            int hoursNeeded = course->hoursPerWeek;
+            int hoursNeeded = max(0, course->hoursPerWeek);
 
-            while (hoursNeeded > 0 && dayIndex < weekdays.size()) {
+            while (hoursNeeded > 0 && hourIndex < startHours.size()) {
                 int hoursThisSlot = min(hoursNeeded, 2);
 
-                ScheduleSlot slot(weekdays[dayIndex], startHour, hoursThisSlot,
+                ScheduleSlot slot(weekdays[dayIndex], startHours[hourIndex], hoursThisSlot,
                     course->id, course->name, "Study");
 
                 if (schedule.addSlot(slot)) {
@@ -1028,8 +1071,7 @@ public:
                 dayIndex++;
                 if (dayIndex >= weekdays.size()) {
                     dayIndex = 0;
-                    startHour = (startHour + 2) % 24;
-                    if (startHour < 8) startHour = 18;
+                    hourIndex++;
                 }
             }
         }
@@ -1183,8 +1225,7 @@ public:
         cout << "Enter choice -> ";
 
         int choice;
-        cin >> choice;
-        cin.ignore();
+        choice = readInt();
         return choice;
     }
 
@@ -1263,7 +1304,7 @@ public:
 
     void waitForEnter() {
         cout << "\nPress Enter to continue...";
-        cin.get();
+        readLineOrExit();
     }
 };
 
@@ -1320,6 +1361,10 @@ public:
             c->enrollmentCount = 50 + (rand() % 150);
         }
 
+        // Keep an existing courses file; "Load Data from Files" brings it back.
+        ifstream existing("data/courses.txt");
+        if (existing.good()) return;
+
         try {
             FileManager::saveCourses(allCourses);
         }
@@ -1359,13 +1404,14 @@ public:
         cout << "Enter email: ";
         getline(cin, email);
         cout << "Select skill level (0 = Novice, 1 = Intermediate, 2 = Proficient, 3 = Expert): ";
-        cin >> skillLevelInt;
-        cin.ignore();
+        skillLevelInt = readInt();
         cout << "Enter learning goal (programming/web): ";
         getline(cin, goal);
         cout << "Available hours per week: ";
-        cin >> hours;
-        cin.ignore();
+        hours = readInt();
+
+        skillLevelInt = clampInt(skillLevelInt, 0, 3);
+        hours = clampInt(hours, 1, 100);
 
         Student* student = new Student(nextStudentId++, name, email,
             (SkillLevel)skillLevelInt, goal, hours);
@@ -1479,14 +1525,18 @@ public:
         double score;
 
         cout << "Enter course ID to complete: ";
-        cin >> courseId;
+        courseId = readInt();
         cout << "Enter your score (0-100): ";
-        cin >> score;
-        cin.ignore();
+        score = readDouble();
 
         Course* course = bst.search(courseId);
         if (!course) {
             ui.displayError("Course not found!");
+            return;
+        }
+
+        if (score < 0 || score > 100) {
+            ui.displayError("Score must be between 0 and 100");
             return;
         }
 
@@ -1524,8 +1574,7 @@ public:
             cout << endl;
             cout << "Enter Choice -> ";
             int choice;
-            cin >> choice;
-            cin.ignore();
+            choice = readInt();
 
             if (choice == 1) {
                 createStudent();
@@ -1533,8 +1582,7 @@ public:
             else if (choice == 2) {
                 int sid;
                 cout << "Enter student ID: ";
-                cin >> sid;
-                cin.ignore();
+                sid = readInt();
 
                 if (students.find(sid) != students.end()) {
                     currentStudent = students[sid];
@@ -1553,8 +1601,7 @@ public:
         while (true) {
             ui.displayStudentMenu();
             int choice;
-            cin >> choice;
-            cin.ignore();
+            choice = readInt();
 
             switch (choice) {
             case 1:
@@ -1590,8 +1637,7 @@ public:
             case 8: {
                 int id;
                 cout << "Enter course ID: ";
-                cin >> id;
-                cin.ignore();
+                id = readInt();
                 Course* c = bst.search(id);
                 if (c) c->display();
                 else ui.displayError("Course not found");
@@ -1625,8 +1671,7 @@ public:
         while (true) {
             ui.displayAdminMenu();
             int choice;
-            cin >> choice;
-            cin.ignore();
+            choice = readInt();
 
             switch (choice) {
             case 1:
@@ -1677,8 +1722,7 @@ public:
         while (true) {
             ui.displayDoctorMenu();
             int choice;
-            cin >> choice;
-            cin.ignore();
+            choice = readInt();
 
             switch (choice) {
             case 1:
@@ -1753,15 +1797,13 @@ public:
         cout << "Course Name: ";
         getline(cin, name);
         cout << "Difficulty (0 = Beginner, 1 = Intermediate, 2 = Advanced): ";
-        cin >> diffInt;
+        diffInt = readInt();
         cout << "Duration (weeks): ";
-        cin >> dur;
-        cin.ignore();
+        dur = readInt();
         cout << "Category: ";
         getline(cin, category);
         cout << "Hours per week: ";
-        cin >> hrs;
-        cin.ignore();
+        hrs = readInt();
         cout << "Instructor: ";
         getline(cin, instructor);
         cout << "Description: ";
@@ -1769,8 +1811,8 @@ public:
 
         Course* newCourse
 
-            = new Course(nextCourseId++, name, static_cast<Difficulty>(diffInt), dur,
-                category, {}, {}, hrs, instructor);
+            = new Course(nextCourseId++, name, static_cast<Difficulty>(clampInt(diffInt, 0, 2)), clampInt(dur, 1, 104),
+                category, {}, {}, clampInt(hrs, 1, 40), instructor);
         newCourse->description = desc;
 
         allCourses.push_back(newCourse);
@@ -1793,8 +1835,7 @@ public:
         cout << "\n--- Remove Course ---\n";
         int courseId;
         cout << "Enter Course ID: ";
-        cin >> courseId;
-        cin.ignore();
+        courseId = readInt();
 
         auto it = courseMap.find(courseId);
         if (it != courseMap.end()) {
@@ -1828,8 +1869,7 @@ public:
     void updateCourseInfo() {
         int courseId;
         cout << "Enter Course ID to update: ";
-        cin >> courseId;
-        cin.ignore();
+        courseId = readInt();
 
         auto it = courseMap.find(courseId);
         if (it == courseMap.end()) {
@@ -1851,19 +1891,18 @@ public:
         cout << "Description: ";
         getline(cin, description);
         cout << "Duration (weeks, " << c->durationWeeks << "): ";
-        cin >> dur;
+        dur = readInt();
         cout << "Hours/Week (" << c->hoursPerWeek << "): ";
-        cin >> hrs;
+        hrs = readInt();
         cout << "Difficulty (0=Beginner, 1=Intermediate, 2=Advanced): ";
-        cin >> diffInt;
-        cin.ignore();
+        diffInt = readInt();
 
         if (!name.empty()) c->name = name;
         if (!instructor.empty()) c->instructor = instructor;
         if (!description.empty()) c->description = description;
         if (dur > 0) c->durationWeeks = dur;
-        if (hrs > 0) c->hoursPerWeek = hrs;
-        c->difficulty = static_cast<Difficulty>(diffInt);
+        if (hrs > 0) c->hoursPerWeek = clampInt(hrs, 1, 40);
+        if (diffInt >= 0 && diffInt <= 2) c->difficulty = static_cast<Difficulty>(diffInt);
 
         setupDataStructures();
         ui.displaySuccess("Course updated successfully!");
@@ -1890,8 +1929,29 @@ public:
 
     void loadAllData() {
         try {
-            allCourses = FileManager::loadCourses();
-            students = FileManager::loadAllStudents();
+            vector<Course*> loadedCourses = FileManager::loadCourses();
+            map<int, Student*> loadedStudents;
+            try {
+                loadedStudents = FileManager::loadAllStudents();
+            } catch (...) {
+                for (Course* c : loadedCourses) delete c;
+                throw;
+            }
+
+            for (Course* c : allCourses) delete c;
+            for (auto& pair : students) delete pair.second;
+
+            allCourses = loadedCourses;
+            students = loadedStudents;
+            currentStudent = nullptr;
+            courseMap.clear();
+            pathStack.clear();
+
+            nextCourseId = 1;
+            for (Course* c : allCourses) nextCourseId = max(nextCourseId, c->id + 1);
+            nextStudentId = 1;
+            for (auto& pair : students) nextStudentId = max(nextStudentId, pair.first + 1);
+
             setupDataStructures();
             ui.displaySuccess("Data loaded successfully!");
         }
@@ -1903,8 +1963,7 @@ public:
     void viewStudentProgressReport() {
         int sid;
         cout << "Enter Student ID: ";
-        cin >> sid;
-        cin.ignore();
+        sid = readInt();
 
         if (students.find(sid) == students.end()) {
             ui.displayError("Student not found!");
@@ -1918,8 +1977,7 @@ public:
     void performMentalHealthAssessment() {
         int sid;
         cout << "Enter Student ID for assessment: ";
-        cin >> sid;
-        cin.ignore();
+        sid = readInt();
 
         auto it = students.find(sid);
         if (it == students.end()) {
@@ -1933,8 +1991,11 @@ public:
 
         int newStressLevel;
         cout << "Enter new stress level (1-10): ";
-        cin >> newStressLevel;
-        cin.ignore();
+        newStressLevel = readInt();
+        if (newStressLevel < 1 || newStressLevel > 10) {
+            ui.displayError("Stress level must be between 1 and 10");
+            return;
+        }
         student->stressLevel = newStressLevel;
 
         ui.displaySuccess("Assessment updated for " + student->name);
@@ -1943,8 +2004,7 @@ public:
     void addMedicalNote() {
         int sid;
         cout << "Enter Student ID: ";
-        cin >> sid;
-        cin.ignore();
+        sid = readInt();
 
         if (students.find(sid) == students.end()) {
             ui.displayError("Student not found!");
@@ -1973,8 +2033,7 @@ public:
     void reviewStudentSchedule() {
         int sid;
         cout << "Enter Student ID: ";
-        cin >> sid;
-        cin.ignore();
+        sid = readInt();
 
         auto it = students.find(sid);
         if (it == students.end()) {
