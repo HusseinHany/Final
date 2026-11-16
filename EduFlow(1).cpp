@@ -775,7 +775,6 @@ public:
 class DepthLimitedSearch {
 private:
     Graph* graph;
-    map<int, Course*>* courseMap;
 
     void generatePathRecursive(int courseId, int depth, int limit, vector<int>& path,
         map<int, bool>& visited, vector<int>& completedCourses) {
@@ -795,7 +794,7 @@ private:
     }
 
 public:
-    DepthLimitedSearch(Graph* g, map<int, Course*>* cm) : graph(g), courseMap(cm) {}
+    DepthLimitedSearch(Graph* g, map<int, Course*>* /*courseMap*/) : graph(g) {}
 
     vector<int> generateLimitedPath(int startId, int depthLimit, vector<int>& completedCourses) {
         vector<int> path;
@@ -811,7 +810,7 @@ public:
 // ============ AI ENGINE CLASS ============
 class AIEngine {
 public:
-    static double calculateAIScore(Course* course, const map<string, int>& studentSkills,
+    static double calculateAIScore(Course* course, const map<string, int>& /*studentSkills*/,
         SkillLevel skillLevel, string learningGoal,
         int availableHours, vector<int>& completedCourses) {
         double score = 0.0;
@@ -1362,6 +1361,10 @@ public:
             c->enrollmentCount = 50 + (rand() % 150);
         }
 
+        // Build the course index, tree and prerequisite graph straight away;
+        // generating a learning path needs them.
+        setupDataStructures();
+
         // Keep an existing courses file; "Load Data from Files" brings it back.
         ifstream existing("data/courses.txt");
         if (existing.good()) return;
@@ -1510,7 +1513,9 @@ public:
         cout << "  Learning Path:\n";
         vector<int> path = pathStack.getPath();
         for (size_t i = 0; i < path.size(); i++) {
-            Course* c = courseMap[path[i]];
+            auto found = courseMap.find(path[i]);
+            if (found == courseMap.end() || !found->second) continue;
+            Course* c = found->second;
             cout << "    " << (i + 1) << ". " << c->name << " (" << difficultyToStr(c->difficulty) << ")\n";
         }
 
